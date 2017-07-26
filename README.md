@@ -1,10 +1,11 @@
 # Spark 2.2.0 base layer
-
+Forked from https://github.com/radanalyticsio/openshift-spark
 
 ## Components:
 * Spark 2.2.0
     * Uses NSS_WRAPPER
-        *  modify /etc/passwd so arbitrary UIDs can run and still have a username.
+        * forked elements from atbentley/docker-nss-wrapper
+        * modify /etc/passwd so arbitrary UIDs can run and still have a username.
         * useful in environments such as Openshift which randomise the UID for each container
     * Spark Configuration
         * Reverse proxy configuration

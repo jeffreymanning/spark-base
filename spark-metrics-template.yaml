@@ -111,7 +111,7 @@ objects:
 parameters:
 - name: SPARK_IMAGE
   description: Name of the Spark master/worker image
-  value: analyticsci/openshift-spark:v2.1.0-metrics-jolokia
+  value: docker.io/jeffreymanning/spark-base:latest
 - name: MASTER_NAME
   description: master name used as a service name and a selector
   generate: expression
