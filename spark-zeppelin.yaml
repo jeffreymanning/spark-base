@@ -69,7 +69,7 @@ objects:
         containers:
           - name: ${MASTER_NAME}
             image: ${SPARK_IMAGE}
-            imagePullPolicy: "IfNotPresent"
+            imagePullPolicy: "Always"
             env:
               - name: SPARK_MASTER_PORT
                 value: "7077"
@@ -101,7 +101,7 @@ objects:
         containers:
           - name: ${WORKER_NAME}
             image: ${SPARK_IMAGE}
-            imagePullPolicy: "IfNotPresent"
+            imagePullPolicy: "Always"
             env:
               - name: SPARK_MASTER_ADDRESS
                 value: spark://${MASTER_NAME}:7077
@@ -128,9 +128,13 @@ objects:
         containers:
           - name: ${ZEPPELIN_NAME}
             image: ${ZEPPELIN_IMAGE}
-            imagePullPolicy: "IfNotPresent"
+            imagePullPolicy: "Always"
+            ports:
+              - containerPort: 8080
             env:
               - name: MASTER
+                value: spark://${MASTER_NAME}:7077
+              - name: SPARK_MASTER_ADDRESS
                 value: spark://${MASTER_NAME}:7077
 
 parameters:
@@ -154,4 +158,4 @@ parameters:
   required: true
 - name: ZEPPELIN_IMAGE
   description: Name of the Zeppelin interface
-  value: docker.io/openkbs/docker-zeppelin:latest
+  value: docker.io/jeffreymanning/zeppelin:latest

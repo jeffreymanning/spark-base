@@ -7,6 +7,6 @@
 cat /etc/passwd > ${NSS_WRAPPER_PASSWD}
 echo "$(id -u):x:$(id -u):$(id -g):dynamic uid:$SPARK_HOME:/bin/false" >> ${NSS_WRAPPER_PASSWD}
 
-export LD_PRELOAD=libnss_wrapper.so
+export LD_PRELOAD=${LD_PRELOAD}:libnss_wrapper.so
 
 exec "$@"
