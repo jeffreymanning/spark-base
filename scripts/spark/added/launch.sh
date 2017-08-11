@@ -31,7 +31,8 @@ if [ -z ${SPARK_MASTER_ADDRESS+_} ]; then
     # run the spark master directly (instead of sbin/start-master.sh) to
     # link master and container lifecycle
     # If SPARK_METRICS_ON env variable is not provided, start master without the agent.
-    if [ -z ${SPARK_METRICS_ON+_} ]; then
+    # -z is true if empty
+    if [ -z ${SPARK_METRICS_ON+_} ] || ["$SPARK_METRICS_ON" != "true"]; then
         echo "Starting master"
         # run the spark master directly (instead of sbin/start-master.sh) to
         # link master and container lifecycle
@@ -39,7 +40,8 @@ if [ -z ${SPARK_MASTER_ADDRESS+_} ]; then
     else
         echo "Starting master with metrics enabled"
         # If SPARK_METRICS_ON env is set then start spark master with agent
-        exec $SPARK_HOME/bin/spark-class -javaagent:$SPARK_HOME/jolokia-jvm-1.3.6-agent.jar=port=7777,host=0.0.0.0 org.apache.spark.deploy.master.Master
+        # specifying localhost or 0.0.0.0?
+        exec $SPARK_HOME/bin/spark-class -javaagent:$SPARK_HOME/jolokia-jvm-1.3.6-agent.jar=port=7777,host=127.0.0.1 org.apache.spark.deploy.master.Master
     fi
 
 else
@@ -59,9 +61,10 @@ else
         sleep 1
     done
 
-    if [ -z ${SPARK_METRICS_ON+_} ]; then
+    if [ -z ${SPARK_METRICS_ON+_} ] || ["$SPARK_METRICS_ON" != "true"]; then
         exec $SPARK_HOME/bin/spark-class org.apache.spark.deploy.worker.Worker $SPARK_MASTER_ADDRESS
     else
-        exec $SPARK_HOME/bin/spark-class -javaagent:$SPARK_HOME/jolokia-jvm-1.3.6-agent.jar=port=7777,host=0.0.0.0 org.apache.spark.deploy.worker.Worker $SPARK_MASTER_ADDRESS
+        # specifying localhost or 0.0.0.0?
+        exec $SPARK_HOME/bin/spark-class -javaagent:$SPARK_HOME/jolokia-jvm-1.3.6-agent.jar=port=7777,host=127.0.0.1 org.apache.spark.deploy.worker.Worker $SPARK_MASTER_ADDRESS
     fi
 fi

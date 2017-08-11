@@ -22,6 +22,22 @@ Forked from https://github.com/radanalyticsio/openshift-spark
     * Python 2.7.5 (Default Centos7 install)
     * Other tools: tar curl net-tools build-essential git wget unzip vim  
 
+## Monitoring:
+* Web
+    * Configure
+        * command line: spark-shell --conf spark.eventLog.enabled=true --conf spark.eventLog.dir=dirctory
+        * Scala: sparkConf.set("spark.eventLog.enabled", "true")
+        * spark-defaults (not recommended): spark.eventLog.enabled           true
+    * access
+        * simply opening http://<driver-node>:4040  (1,2,3... for successive spark context)
+* JSON
+    * http://<server-url>:18080/api/v1
+    * see https://spark.apache.org/docs/latest/monitoring.html#rest-api
+* Metrics
+    * set ENABLE_METRICS true (yaml or values.yml)
+    * currently configured to JmxSink for viewing in JMX console
+    * GraphiteSink coming (to work with Grafana)
+
 ## Pull the image from Docker Repository
 
 ```bash

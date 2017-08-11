@@ -53,6 +53,10 @@ objects:
   apiVersion: v1
   metadata:
     name: ${MASTER_NAME}
+    labels:
+      cluster: ${CLUSTER_NAME}
+      type: master
+      spark-jvm-metrics: ${ENABLE_METRICS}
   spec:
     strategy:
       type: Rolling
@@ -75,6 +79,8 @@ objects:
                 value: "7077"
               - name: SPARK_MASTER_WEBUI_PORT
                 value: "8080"
+              - name: SPARK_METRICS_ON
+                value: ${ENABLE_METRICS}
             ports:
               - containerPort: 7077
                 protocol: TCP
@@ -85,12 +91,16 @@ objects:
   apiVersion: v1
   metadata:
     name: ${WORKER_NAME}
+    labels:
+      cluster: ${CLUSTER_NAME}
+      type: worker
+      spark-jvm-metrics: ${ENABLE_METRICS}
   spec:
     strategy:
       type: Rolling
     triggers:
       - type: ConfigChange
-    replicas: 3
+    replicas: ${WORKER_RELICAS}
     selector:
       name: ${WORKER_NAME}
     template:
@@ -107,11 +117,15 @@ objects:
                 value: spark://${MASTER_NAME}:7077
               - name: SPARK_MASTER_UI_ADDRESS
                 value: http://${MASTER_NAME}-webui:8080
-
+              - name: SPARK_METRICS_ON
+                value: ${ENABLE_METRICS}
 - kind: DeploymentConfig
   apiVersion: v1
   metadata:
     name: ${ZEPPELIN_NAME}
+    labels:
+      cluster: ${CLUSTER_NAME}
+      type: worker
   spec:
     strategy:
       type: Rolling
@@ -136,11 +150,20 @@ objects:
                 value: spark://${MASTER_NAME}:7077
               - name: SPARK_MASTER_ADDRESS
                 value: spark://${MASTER_NAME}:7077
-
+              - name: SPARK_METRICS_ON
+                value: ${ENABLE_METRICS}
 parameters:
 - name: SPARK_IMAGE
   description: Name of the Spark master/worker image
   value: docker.io/jeffreymanning/spark-base:latest
+- name: ENABLE_METRICS
+  description: turn on(T)/off - jvm metrics jolokia
+  value: "true"
+- name: CLUSTER_NAME
+  description: name of cluster - applicable to spark infrastructure
+  generate: expression
+  from: "cluster-[a-z0-9]{4}"
+  required: true
 - name: MASTER_NAME
   description: master name used as a service name and a selector
   generate: expression
@@ -150,6 +173,10 @@ parameters:
   description: worker name used as a selector
   generate: expression
   from: "spark-worker-[a-z0-9]{4}"
+  required: true
+- name: WORKER_RELICAS
+  description: worker replica count
+  value: "3"
   required: true
 - name: ZEPPELIN_NAME
   description: zeppelin name used for selector - combines with master name
