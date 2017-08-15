@@ -1,0 +1,430 @@
+kind: Template
+apiVersion: v1
+template: spark
+metadata:
+  name: spark
+labels:
+  app: sparkcluster
+objects:
+
+### setup gluster endpoints; defaults to current namespace
+- kind: Endpoints
+  apiVersion: v1
+  metadata:
+    name: ${GLUSTER_NAME}
+    labels:
+      name: ${MASTER_NAME}
+      cluster: ${CLUSTER_NAME}
+  subsets:
+    - addresses:
+        - ip: ${GLUSTER_CLUSTER_IP_1}
+      ports:
+        - port: 1
+    - addresses:
+        - ip: ${GLUSTER_CLUSTER_IP_2}
+      ports:
+        - port: 1
+    - addresses:
+        - ip: ${GLUSTER_CLUSTER_IP_3}
+      ports:
+        - port: 1
+
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: ${GLUSTER_NAME}
+    labels:
+      name: ${MASTER_NAME}
+      cluster: ${CLUSTER_NAME}
+    labels:
+      component: gluster-spark-storage
+  spec:
+    ports:
+      - port: 1
+# setup the Persistent Volumes that will be claimed by analytics
+
+- kind: PersistentVolume
+  apiVersion: v1
+  metadata:
+    name: ${GLUSTER_NAME}-scratch
+    labels:
+      name: ${MASTER_NAME}
+      cluster: ${CLUSTER_NAME}
+      gluster-cluster: ${GLUSTER_NAME}
+  spec:
+    capacity:
+      storage: 2Gi
+    accessModes:
+      - ReadWriteMany
+    glusterfs:
+      endpoints: ${GLUSTER_NAME}
+      path: /Scratch
+      readOnly: false
+    persistentVolumeReclaimPolicy: Retain
+
+- kind: PersistentVolume
+  apiVersion: v1
+  metadata:
+    name: ${GLUSTER_NAME}-logs
+    labels:
+      name: ${MASTER_NAME}
+      cluster: ${CLUSTER_NAME}
+      gluster-cluster: ${GLUSTER_NAME}
+  spec:
+    capacity:
+      storage: 5Gi
+    accessModes:
+      - ReadWriteMany
+    glusterfs:
+      endpoints: ${GLUSTER_NAME}
+      path: /SparkLogs
+      readOnly: false
+    persistentVolumeReclaimPolicy: Retain
+
+- kind: PersistentVolumeClaim
+  apiVersion: v1
+  metadata:
+    name: ${GLUSTER_NAME}-scratch
+    labels:
+      name: ${MASTER_NAME}
+      cluster: ${CLUSTER_NAME}
+      gluster-cluster: ${GLUSTER_NAME}
+  spec:
+    accessModes:
+    - ReadWriteMany
+    resources:
+       requests:
+         storage: 2Gi
+
+- kind: PersistentVolumeClaim
+  apiVersion: v1
+  metadata:
+    name: ${GLUSTER_NAME}-logs
+    labels:
+      name: ${MASTER_NAME}
+      cluster: ${CLUSTER_NAME}
+      gluster-cluster: ${GLUSTER_NAME}
+  spec:
+    accessModes:
+    - ReadWriteMany
+    resources:
+       requests:
+         storage: 5Gi
+
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: ${MASTER_NAME}
+    labels:
+      name: ${MASTER_NAME}
+  spec:
+    ports:
+      - protocol: TCP
+        port: 7077
+        targetPort: 7077
+    selector:
+      name: ${MASTER_NAME}
+
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: ${MASTER_NAME}-webui
+    labels:
+      name: ${MASTER_NAME}
+  spec:
+    ports:
+      - protocol: TCP
+        port: 8080
+        targetPort: 8080
+    selector:
+      name: ${MASTER_NAME}
+
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: ${MASTER_NAME}-jolokia
+    labels:
+      name: ${MASTER_NAME}
+  spec:
+    ports:
+      - protocol: TCP
+        port: 7777
+        targetPort: 7777
+    selector:
+      name: ${MASTER_NAME}
+
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: ${ZEPPELIN_NAME}
+    labels:
+      name: ${MASTER_NAME}
+  spec:
+    ports:
+      - port: 80
+        targetPort: 8080
+    selector:
+      name: ${ZEPPELIN_NAME}
+    type: LoadBalancer
+
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    name: ${MASTER_NAME}
+    labels:
+      cluster: ${CLUSTER_NAME}
+      type: master
+      spark-jvm-metrics: ${ENABLE_METRICS}
+  spec:
+    strategy:
+      type: Rolling
+    triggers:
+      - type: ConfigChange
+    replicas: 1
+    selector:
+      name: ${MASTER_NAME}
+    template:
+      metadata:
+        labels:
+          name: ${MASTER_NAME}
+      spec:
+        containers:
+          - name: ${MASTER_NAME}
+            image: ${SPARK_IMAGE}
+            imagePullPolicy: "Always"
+            env:
+              - name: SPARK_MASTER_PORT
+                value: "7077"
+              - name: SPARK_MASTER_WEBUI_PORT
+                value: "8080"
+              - name: SPARK_METRICS_ON
+                value: ${ENABLE_METRICS}
+            ports:
+              - containerPort: 7077
+                protocol: TCP
+              - containerPort: 8080
+                protocol: TCP
+              - containerPort: 7777
+                protocol: TCP
+            volumeMounts:
+              - mountPath: /mnt/data
+                name: glusterfsdata
+              - mountPath: /mnt/logs
+                name: glusterfslogs
+        volumes:
+          - name: glusterfsdata
+            persistentVolumeClaim:
+              claimName: ${GLUSTER_NAME}-scratch
+          - name: glusterfslogs
+            persistentVolumeClaim:
+              claimName: ${GLUSTER_NAME}-logs
+
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    name: ${WORKER_NAME}
+    labels:
+      cluster: ${CLUSTER_NAME}
+      type: worker
+      spark-jvm-metrics: ${ENABLE_METRICS}
+  spec:
+    strategy:
+      type: Rolling
+    triggers:
+      - type: ConfigChange
+    replicas: ${WORKER_RELICAS}
+    selector:
+      name: ${WORKER_NAME}
+    template:
+      metadata:
+        labels:
+          name: ${WORKER_NAME}
+      spec:
+        containers:
+          - name: ${WORKER_NAME}
+            image: ${SPARK_IMAGE}
+            imagePullPolicy: "Always"
+            env:
+              - name: SPARK_MASTER_ADDRESS
+                value: spark://${MASTER_NAME}:7077
+              - name: SPARK_MASTER_UI_ADDRESS
+                value: http://${MASTER_NAME}-webui:8080
+              - name: SPARK_METRICS_ON
+                value: ${ENABLE_METRICS}
+            volumeMounts:
+              - mountPath: /mnt/data
+                name: glusterfsdata
+              - mountPath: /mnt/logs
+                name: glusterfslogs
+        volumes:
+          - name: glusterfsdata
+            persistentVolumeClaim:
+              claimName: ${GLUSTER_NAME}-scratch
+          - name: glusterfslogs
+            persistentVolumeClaim:
+              claimName: ${GLUSTER_NAME}-logs
+
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    name: ${ZEPPELIN_NAME}
+    labels:
+      cluster: ${CLUSTER_NAME}
+      type: api
+  spec:
+    strategy:
+      type: Rolling
+    triggers:
+      - type: ConfigChange
+    replicas: 1
+    selector:
+      name: ${ZEPPELIN_NAME}
+    template:
+      metadata:
+        labels:
+          name: ${ZEPPELIN_NAME}
+      spec:
+        containers:
+          - name: ${ZEPPELIN_NAME}
+            image: ${ZEPPELIN_IMAGE}
+            imagePullPolicy: "Always"
+            ports:
+              - containerPort: 8080
+            env:
+              - name: MASTER
+                value: spark://${MASTER_NAME}:7077
+              - name: SPARK_MASTER_ADDRESS
+                value: spark://${MASTER_NAME}:7077
+              - name: SPARK_METRICS_ON
+                value: ${ENABLE_METRICS}
+            volumeMounts:
+              - mountPath: /mnt/data
+                name: glusterfsdata
+              - mountPath: /mnt/logs
+                name: glusterfslogs
+        volumes:
+          - name: glusterfsdata
+            persistentVolumeClaim:
+              claimName: ${GLUSTER_NAME}-scratch
+          - name: glusterfslogs
+            persistentVolumeClaim:
+              claimName: ${GLUSTER_NAME}-logs
+# R-Studio
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: ${RSTUDIO_NAME}
+    labels:
+      name: ${RSTUDIO_NAME}
+      cluster: ${CLUSTER_NAME}
+      type: api
+  spec:
+    ports:
+      - protocol: TCP
+        port: 8787
+        targetPort: 8787
+    selector:
+      name: ${RSTUDIO_NAME}
+
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    name: ${RSTUDIO_NAME}
+  spec:
+    strategy:
+      type: Rolling
+    triggers:
+      - type: ConfigChange
+    replicas: 1
+    selector:
+      name: ${RSTUDIO_NAME}
+    template:
+      metadata:
+        labels:
+          name: ${RSTUDIO_NAME}
+      spec:
+        containers:
+          - name: ${RSTUDIO_NAME}
+            image: ${RSTUDIO_IMAGE}
+            env:
+              - name: SPARK_MASTER_ADDRESS
+                value: spark://${MASTER_NAME}:7077
+            ports:
+              - containerPort: 8787
+                protocol: TCP
+            volumeMounts:
+              - mountPath: /mnt/data
+                name: glusterfsdata
+              - mountPath: /mnt/logs
+                name: glusterfslogs
+        volumes:
+          - name: glusterfsdata
+            persistentVolumeClaim:
+              claimName: ${GLUSTER_NAME}-scratch
+          - name: glusterfslogs
+            persistentVolumeClaim:
+              claimName: ${GLUSTER_NAME}-logs
+
+parameters:
+- name: SPARK_IMAGE
+  description: Name of the Spark master/worker image
+  value: docker.io/jeffreymanning/spark-base:latest
+- name: ENABLE_METRICS
+  description: turn on(T)/off - jvm metrics jolokia
+  value: "true"
+- name: CLUSTER_NAME
+  description: name of cluster - applicable to spark infrastructure
+  generate: expression
+  from: "cluster-[a-z0-9]{4}"
+  required: true
+- name: MASTER_NAME
+  description: master name used as a service name and a selector
+  generate: expression
+  from: "spark-master-[a-z0-9]{4}"
+  required: true
+- name: WORKER_NAME
+  description: worker name used as a selector
+  generate: expression
+  from: "spark-worker-[a-z0-9]{4}"
+  required: true
+- name: WORKER_RELICAS
+  description: worker replica count
+  value: "3"
+  required: true
+# zeppelin parameters
+- name: ZEPPELIN_NAME
+  description: zeppelin name used for selector - combines with master name
+  generate: expression
+  from: "zeppelin-[a-z0-9]{4}"
+  required: true
+- name: ZEPPELIN_IMAGE
+  description: Name of the Zeppelin interface
+  value: docker.io/jeffreymanning/zeppelin:latest
+# gluster parameters
+- name: GLUSTER_NAME
+  description: gluster name used for selector
+  generate: expression
+  from: "spark-gluster-[a-z0-9]{4}"
+  required: true
+# gluster cluster is composed of at least 3 IP addresses
+- name: GLUSTER_CLUSTER_IP_1
+  description: IP Addr 1
+  value: "192.168.1.101"
+  required: true
+- name: GLUSTER_CLUSTER_IP_2
+  description: IP Addr 2
+  value: "192.168.1.102"
+  required: true
+- name: GLUSTER_CLUSTER_IP_3
+  description: IP Addr 3
+  value: "192.168.1.103"
+  required: true
+###  R-studio installation
+- name: RSTUDIO_IMAGE
+  description: Name of the r-studio api image
+  value: docker.io/jeffreymanning/r-studio:latest
+- name: RSTUDIO_NAME
+  description: rstudio name used as a selector
+  generate: expression
+  from: "rstudio-server-[a-z0-9]{4}"
+  required: true
