@@ -1,0 +1,17 @@
+apiVersion: storage.k8s.io/v1beta1
+kind: StorageClass
+metadata:
+  name: gluster-spark
+  annotations:
+    storageclass.beta.kubernetes.io/is-default-class: "false"
+    kubernetes.io/description: gluster provisioner
+provisioner: kubernetes.io/glusterfs
+parameters:
+  resturl: "http://heketi-gluster.apps.jeff.local"
+  clusterid: "0a708bb4a65548fe6694f0de8b30bdf5"
+  restauthenabled: "true"
+  restuser: "admin"
+  volumetype: "replicate:3"
+  secretNamespace: "default"
+  secretName: "heketi-secret"
+

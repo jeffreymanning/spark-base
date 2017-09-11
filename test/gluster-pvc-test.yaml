@@ -1,0 +1,90 @@
+kind: Template
+apiVersion: v1
+template: spark-test-dyn-pvc
+metadata:
+  name: spark-test-dyn-pvc
+labels:
+  app: sparkcluster-test-dyn-pvc
+objects:
+
+# setup the Persistent Volumes that will be claimed by analytics
+# using the storage class for handling the PVC will inherit the
+# reclaim policy of the storage class.  This is defaulted to delete!
+# Can be manually edited only after creation.
+#
+- kind: PersistentVolumeClaim
+  apiVersion: v1
+  metadata:
+    name: ${GLUSTER_NAME}-scratch
+    labels:
+      name: ${MASTER_NAME}
+      cluster: ${CLUSTER_NAME}
+      gluster-cluster: ${GLUSTER_NAME}
+  spec:
+    accessModes:
+    - ReadWriteMany
+    resources:
+       requests:
+         storage: 2Gi
+    storageClassName: gluster
+
+parameters:
+- name: SPARK_IMAGE
+  description: Name of the Spark master/worker image
+  value: docker.io/jeffreymanning/spark-base:latest
+- name: CLUSTER_NAME
+  description: name of cluster - applicable to spark infrastructure
+  generate: expression
+  from: "cluster-[a-z0-9]{4}"
+  required: true
+- name: MASTER_NAME
+  description: master name used as a service name and a selector
+  generate: expression
+  from: "spark-master-[a-z0-9]{4}"
+  required: true
+- name: WORKER_NAME
+  description: worker name used as a selector
+  generate: expression
+  from: "spark-worker-[a-z0-9]{4}"
+  required: true
+- name: WORKER_RELICAS
+  description: worker replica count
+  value: "3"
+  required: true
+# zeppelin parameters
+- name: ZEPPELIN_NAME
+  description: zeppelin name used for selector - combines with master name
+  generate: expression
+  from: "zeppelin-[a-z0-9]{4}"
+  required: true
+- name: ZEPPELIN_IMAGE
+  description: Name of the Zeppelin interface
+  value: docker.io/jeffreymanning/zeppelin:latest
+# gluster parameters
+- name: GLUSTER_NAME
+  description: gluster name used for selector
+  generate: expression
+  from: "spark-gluster-[a-z0-9]{4}"
+  required: true
+# gluster cluster is composed of at least 3 IP addresses
+- name: GLUSTER_CLUSTER_IP_1
+  description: IP Addr 1
+  value: "192.168.1.101"
+  required: true
+- name: GLUSTER_CLUSTER_IP_2
+  description: IP Addr 2
+  value: "192.168.1.102"
+  required: true
+- name: GLUSTER_CLUSTER_IP_3
+  description: IP Addr 3
+  value: "192.168.1.103"
+  required: true
+###  R-studio installation
+- name: RSTUDIO_IMAGE
+  description: Name of the r-studio api image
+  value: docker.io/jeffreymanning/r-studio:latest
+- name: RSTUDIO_NAME
+  description: rstudio name used as a selector
+  generate: expression
+  from: "rstudio-server-[a-z0-9]{4}"
+  required: true

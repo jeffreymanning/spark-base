@@ -8,11 +8,13 @@ labels:
 objects:
 
 ### setup gluster endpoints; defaults to current namespace
-### setup gluster endpoints; this is the previously setup gluster cluster
 - kind: Endpoints
   apiVersion: v1
   metadata:
-    name: glusterfs-cluster
+    name: ${GLUSTER_NAME}
+    labels:
+      name: ${MASTER_NAME}
+      cluster: ${CLUSTER_NAME}
   subsets:
     - addresses:
         - ip: ${GLUSTER_CLUSTER_IP_1}
@@ -27,17 +29,20 @@ objects:
       ports:
         - port: 1
 
-# need a service to persist the endpoints in this namespace
 - kind: Service
   apiVersion: v1
   metadata:
-    name: glusterfs-cluster
+    name: ${GLUSTER_NAME}
+    labels:
+      name: ${MASTER_NAME}
+      cluster: ${CLUSTER_NAME}
+    labels:
+      component: gluster-spark-storage
   spec:
     ports:
       - port: 1
-
 # setup the Persistent Volumes that will be claimed by analytics
-# note path is the name of the volume.
+
 - kind: PersistentVolume
   apiVersion: v1
   metadata:
@@ -45,15 +50,15 @@ objects:
     labels:
       name: ${MASTER_NAME}
       cluster: ${CLUSTER_NAME}
-      gluster-cluster: glusterfs-cluster
+      gluster-cluster: ${GLUSTER_NAME}
   spec:
     capacity:
       storage: 2Gi
     accessModes:
       - ReadWriteMany
     glusterfs:
-      endpoints: glusterfs-cluster
-      path: scratch
+      endpoints: ${GLUSTER_NAME}
+      path: /Scratch
       readOnly: false
     persistentVolumeReclaimPolicy: Retain
 
@@ -64,14 +69,15 @@ objects:
     labels:
       name: ${MASTER_NAME}
       cluster: ${CLUSTER_NAME}
-      gluster-cluster: glusterfs-cluster
+      gluster-cluster: ${GLUSTER_NAME}
   spec:
     capacity:
       storage: 5Gi
     accessModes:
       - ReadWriteMany
     glusterfs:
-      endpoints: glusterfs-cluster
+      endpoints: ${GLUSTER_NAME}
+      path: /SparkLogs
       readOnly: false
     persistentVolumeReclaimPolicy: Retain
 
@@ -82,7 +88,7 @@ objects:
     labels:
       name: ${MASTER_NAME}
       cluster: ${CLUSTER_NAME}
-      gluster-cluster: glusterfs-cluster
+      gluster-cluster: ${GLUSTER_NAME}
   spec:
     accessModes:
     - ReadWriteMany
@@ -97,7 +103,7 @@ objects:
     labels:
       name: ${MASTER_NAME}
       cluster: ${CLUSTER_NAME}
-      gluster-cluster: glusterfs-cluster
+      gluster-cluster: ${GLUSTER_NAME}
   spec:
     accessModes:
     - ReadWriteMany
@@ -136,6 +142,20 @@ objects:
 - kind: Service
   apiVersion: v1
   metadata:
+    name: ${MASTER_NAME}-jolokia
+    labels:
+      name: ${MASTER_NAME}
+  spec:
+    ports:
+      - protocol: TCP
+        port: 7777
+        targetPort: 7777
+    selector:
+      name: ${MASTER_NAME}
+
+- kind: Service
+  apiVersion: v1
+  metadata:
     name: ${ZEPPELIN_NAME}
     labels:
       name: ${MASTER_NAME}
@@ -143,8 +163,6 @@ objects:
     ports:
       - port: 80
         targetPort: 8080
-      - port: 4040
-        targetPort: 4040
     selector:
       name: ${ZEPPELIN_NAME}
     type: LoadBalancer
@@ -170,6 +188,7 @@ objects:
     labels:
       cluster: ${CLUSTER_NAME}
       type: master
+      spark-jvm-metrics: ${ENABLE_METRICS}
   spec:
     strategy:
       type: Rolling
@@ -192,10 +211,14 @@ objects:
                 value: "7077"
               - name: SPARK_MASTER_WEBUI_PORT
                 value: "8080"
+              - name: SPARK_METRICS_ON
+                value: ${ENABLE_METRICS}
             ports:
               - containerPort: 7077
                 protocol: TCP
               - containerPort: 8080
+                protocol: TCP
+              - containerPort: 7777
                 protocol: TCP
             volumeMounts:
               - mountPath: /mnt/data
@@ -217,6 +240,7 @@ objects:
     labels:
       cluster: ${CLUSTER_NAME}
       type: worker
+      spark-jvm-metrics: ${ENABLE_METRICS}
   spec:
     strategy:
       type: Rolling
@@ -239,6 +263,8 @@ objects:
                 value: spark://${MASTER_NAME}:7077
               - name: SPARK_MASTER_UI_ADDRESS
                 value: http://${MASTER_NAME}-webui:8080
+              - name: SPARK_METRICS_ON
+                value: ${ENABLE_METRICS}
             volumeMounts:
               - mountPath: /mnt/data
                 name: glusterfsdata
@@ -283,6 +309,8 @@ objects:
                 value: spark://${MASTER_NAME}:7077
               - name: SPARK_MASTER_ADDRESS
                 value: spark://${MASTER_NAME}:7077
+              - name: SPARK_METRICS_ON
+                value: ${ENABLE_METRICS}
             volumeMounts:
               - mountPath: /mnt/data
                 name: glusterfsdata
@@ -295,8 +323,7 @@ objects:
           - name: glusterfslogs
             persistentVolumeClaim:
               claimName: ${GLUSTER_NAME}-logs
-# R-Studio, if we define a  mount point, will make this the R_USER_LIBS.
-# will then survive restarts (nop
+# R-Studio
 - kind: Service
   apiVersion: v1
   metadata:
@@ -336,12 +363,6 @@ objects:
             env:
               - name: SPARK_MASTER_ADDRESS
                 value: spark://${MASTER_NAME}:7077
-              - name: R_STUDIO_LIB_SITE
-                value: /mnt/data
-              - name: CRAN_REPO
-                value: https://cran.rstudio.com/
-              - name: BIO_REPO
-                value: https://bioconductor.org/
             ports:
               - containerPort: 8787
                 protocol: TCP
@@ -362,6 +383,9 @@ parameters:
 - name: SPARK_IMAGE
   description: Name of the Spark master/worker image
   value: docker.io/jeffreymanning/spark-base:latest
+- name: ENABLE_METRICS
+  description: turn on(T)/off - jvm metrics jolokia
+  value: "true"
 - name: CLUSTER_NAME
   description: name of cluster - applicable to spark infrastructure
   generate: expression

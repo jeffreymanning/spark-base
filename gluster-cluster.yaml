@@ -1,0 +1,51 @@
+kind: Template
+apiVersion: v1
+template: spark-gluster-cluster
+metadata:
+  name: spark-gluster-cluster
+labels:
+  app: spark-gluster-cluster
+objects:
+
+### setup gluster endpoints; this is the previously setup gluster cluster
+- kind: Endpoints
+  apiVersion: v1
+  metadata:
+    name: glusterfs-cluster
+  subsets:
+    - addresses:
+        - ip: ${GLUSTER_CLUSTER_IP_1}
+      ports:
+        - port: 1
+    - addresses:
+        - ip: ${GLUSTER_CLUSTER_IP_2}
+      ports:
+        - port: 1
+    - addresses:
+        - ip: ${GLUSTER_CLUSTER_IP_3}
+      ports:
+        - port: 1
+
+# need a service to persist the endpoints in this namespace
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: glusterfs-cluster
+  spec:
+    ports:
+      - port: 1
+
+parameters:
+# gluster cluster is composed of at least 3 IP addresses
+- name: GLUSTER_CLUSTER_IP_1
+  description: IP Addr 1
+  value: "192.168.1.101"
+  required: true
+- name: GLUSTER_CLUSTER_IP_2
+  description: IP Addr 2
+  value: "192.168.1.102"
+  required: true
+- name: GLUSTER_CLUSTER_IP_3
+  description: IP Addr 3
+  value: "192.168.1.103"
+  required: true

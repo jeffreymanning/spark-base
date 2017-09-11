@@ -51,8 +51,36 @@ FROM jeffreymanning/spark-base
 ```
 
 ## Run the image
-Use the associated templates (yml files)
-Examples shortly
+There are two (2) basic manual installation options: persistent volumes and dynamic storage.
+
+Clean up and project preparation (PV's are global namespaces)
+* Stale PVs
+    * oc get pvc
+    * oc get pv
+    * oc delete pv spark-gluster-<....>-logs spark-gluster-<....>-scratch ...
+    * oc get storageclass
+    * cd oc delete storageclass gluster
+* oc delete project <project-name>
+
+New project construction
+* oc new-project targeting  --description="AF Targeting demo" --display-name="targeting"
+* oc adm policy add-scc-to-user anyuid -z default -n targeting
+
+Use the associated templates (yaml files).
+* Persistent Volume
+    * oc process -f gluster-cluster.yaml | oc create -f -
+    * oc process -f spark-gluster-pv-zeppelin-R.yaml | oc create -f -
+* Dynamic Volumes: require construction of storage class
+    * oc create -f gluster-secret.yaml
+    * oc get storageclass
+    * if no gluster storage class: 
+        * oc create -f gluster-secret.yaml
+     oc process -f spark-gluster-dyn-zeppelin-R.yaml | oc create -f -
+* Testing
+    * oc process -f ./test/gluster-pv-test.yaml
+    * oc process -f gluster-cluster.yaml
+    * oc process -f gluster-cluster.yaml | oc create -f -
+    * oc process -f ./test/gluster-pv-test.yaml | oc create -f -
 
 ## Build and Run your own image
 Say, you will build the image "my/spark-base".

@@ -1,47 +1,18 @@
 kind: Template
 apiVersion: v1
-template: spark
+template: spark-pv-cluster
 metadata:
-  name: spark
+  name: spark-pv-cluster
 labels:
-  app: sparkcluster
+  app: spark-pv-cluster
 objects:
-
-### setup gluster endpoints; defaults to current namespace
-### setup gluster endpoints; this is the previously setup gluster cluster
-- kind: Endpoints
-  apiVersion: v1
-  metadata:
-    name: glusterfs-cluster
-  subsets:
-    - addresses:
-        - ip: ${GLUSTER_CLUSTER_IP_1}
-      ports:
-        - port: 1
-    - addresses:
-        - ip: ${GLUSTER_CLUSTER_IP_2}
-      ports:
-        - port: 1
-    - addresses:
-        - ip: ${GLUSTER_CLUSTER_IP_3}
-      ports:
-        - port: 1
-
-# need a service to persist the endpoints in this namespace
-- kind: Service
-  apiVersion: v1
-  metadata:
-    name: glusterfs-cluster
-  spec:
-    ports:
-      - port: 1
 
 # setup the Persistent Volumes that will be claimed by analytics
 # note path is the name of the volume.
 - kind: PersistentVolume
   apiVersion: v1
   metadata:
-    name: ${GLUSTER_NAME}-scratch
+    name: ${MASTER_NAME}-scratch
     labels:
       name: ${MASTER_NAME}
       cluster: ${CLUSTER_NAME}
@@ -60,7 +31,7 @@ objects:
 - kind: PersistentVolume
   apiVersion: v1
   metadata:
-    name: ${GLUSTER_NAME}-logs
+    name: ${MASTER_NAME}-logs
     labels:
       name: ${MASTER_NAME}
       cluster: ${CLUSTER_NAME}
@@ -72,13 +43,14 @@ objects:
       - ReadWriteMany
     glusterfs:
       endpoints: glusterfs-cluster
+      path: logs
       readOnly: false
     persistentVolumeReclaimPolicy: Retain
 
 - kind: PersistentVolumeClaim
   apiVersion: v1
   metadata:
-    name: ${GLUSTER_NAME}-scratch
+    name: ${MASTER_NAME}-scratch
     labels:
       name: ${MASTER_NAME}
       cluster: ${CLUSTER_NAME}
@@ -93,7 +65,7 @@ objects:
 - kind: PersistentVolumeClaim
   apiVersion: v1
   metadata:
-    name: ${GLUSTER_NAME}-logs
+    name: ${MASTER_NAME}-logs
     labels:
       name: ${MASTER_NAME}
       cluster: ${CLUSTER_NAME}
@@ -143,6 +115,18 @@ objects:
     ports:
       - port: 80
         targetPort: 8080
+    selector:
+      name: ${ZEPPELIN_NAME}
+    type: LoadBalancer
+
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: ${ZEPPELIN_NAME}-spark-ui
+    labels:
+      name: ${MASTER_NAME}
+  spec:
+    ports:
       - port: 4040
         targetPort: 4040
     selector:
@@ -205,10 +189,10 @@ objects:
         volumes:
           - name: glusterfsdata
             persistentVolumeClaim:
-              claimName: ${GLUSTER_NAME}-scratch
+              claimName: ${MASTER_NAME}-scratch
           - name: glusterfslogs
             persistentVolumeClaim:
-              claimName: ${GLUSTER_NAME}-logs
+              claimName: ${MASTER_NAME}-logs
 
 - kind: DeploymentConfig
   apiVersion: v1
@@ -247,10 +231,10 @@ objects:
         volumes:
           - name: glusterfsdata
             persistentVolumeClaim:
-              claimName: ${GLUSTER_NAME}-scratch
+              claimName: ${MASTER_NAME}-scratch
           - name: glusterfslogs
             persistentVolumeClaim:
-              claimName: ${GLUSTER_NAME}-logs
+              claimName: ${MASTER_NAME}-logs
 
 - kind: DeploymentConfig
   apiVersion: v1
@@ -278,6 +262,9 @@ objects:
             imagePullPolicy: "Always"
             ports:
               - containerPort: 8080
+                protocol: TCP
+              - containerPort: 4040
+                protocol: TCP
             env:
               - name: MASTER
                 value: spark://${MASTER_NAME}:7077
@@ -291,10 +278,10 @@ objects:
         volumes:
           - name: glusterfsdata
             persistentVolumeClaim:
-              claimName: ${GLUSTER_NAME}-scratch
+              claimName: ${MASTER_NAME}-scratch
           - name: glusterfslogs
             persistentVolumeClaim:
-              claimName: ${GLUSTER_NAME}-logs
+              claimName: ${MASTER_NAME}-logs
 # R-Studio, if we define a  mount point, will make this the R_USER_LIBS.
 # will then survive restarts (nop
 - kind: Service
@@ -353,10 +340,10 @@ objects:
         volumes:
           - name: glusterfsdata
             persistentVolumeClaim:
-              claimName: ${GLUSTER_NAME}-scratch
+              claimName: ${MASTER_NAME}-scratch
           - name: glusterfslogs
             persistentVolumeClaim:
-              claimName: ${GLUSTER_NAME}-logs
+              claimName: ${MASTER_NAME}-logs
 
 parameters:
 - name: SPARK_IMAGE
@@ -390,25 +377,6 @@ parameters:
 - name: ZEPPELIN_IMAGE
   description: Name of the Zeppelin interface
   value: docker.io/jeffreymanning/zeppelin:latest
-# gluster parameters
-- name: GLUSTER_NAME
-  description: gluster name used for selector
-  generate: expression
-  from: "spark-gluster-[a-z0-9]{4}"
-  required: true
-# gluster cluster is composed of at least 3 IP addresses
-- name: GLUSTER_CLUSTER_IP_1
-  description: IP Addr 1
-  value: "192.168.1.101"
-  required: true
-- name: GLUSTER_CLUSTER_IP_2
-  description: IP Addr 2
-  value: "192.168.1.102"
-  required: true
-- name: GLUSTER_CLUSTER_IP_3
-  description: IP Addr 3
-  value: "192.168.1.103"
-  required: true
 ###  R-studio installation
 - name: RSTUDIO_IMAGE
   description: Name of the r-studio api image
