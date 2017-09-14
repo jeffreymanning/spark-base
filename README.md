@@ -54,6 +54,8 @@ FROM jeffreymanning/spark-base
 There are two (2) basic manual installation options: persistent volumes and dynamic storage.
 
 Clean up and project preparation (PV's are global namespaces)
+* docker ps -aqf status=exited | xargs docker rm -v
+* docker images -aqf dangling=true | xargs docker rmi
 * Stale PVs
     * oc get pvc
     * oc get pv

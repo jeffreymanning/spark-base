@@ -1,0 +1,203 @@
+kind: Template
+apiVersion: v1
+template: spark-cluster-test
+metadata:
+  name: spark-cluster-test
+labels:
+  app: spark-cluster-test
+objects:
+
+# setup the Persistent Volumes that will be claimed by analytics
+# using the storage class for handling the PVC will inherit the
+# reclaim policy of the storage class.  This is defaulted to delete!
+# Can be manually edited only after creation.
+#
+- kind: PersistentVolumeClaim
+  apiVersion: v1
+  metadata:
+    name: ${MASTER_NAME}-scratch
+    labels:
+      name: ${MASTER_NAME}
+      cluster: ${CLUSTER_NAME}
+  spec:
+    accessModes:
+    - ReadWriteMany
+    resources:
+       requests:
+         storage: 2Gi
+    storageClassName: gluster
+
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: ${MASTER_NAME}
+    labels:
+      name: ${MASTER_NAME}
+  spec:
+    ports:
+      - protocol: TCP
+        port: 7077
+        targetPort: 7077
+    selector:
+      name: ${MASTER_NAME}
+
+- kind: Service
+  apiVersion: v1
+  metadata:
+    name: ${MASTER_NAME}-webui
+    labels:
+      name: ${MASTER_NAME}
+  spec:
+    ports:
+      - protocol: TCP
+        port: 8080
+        targetPort: 8080
+    selector:
+      name: ${MASTER_NAME}
+
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    name: ${MASTER_NAME}
+    labels:
+      cluster: ${CLUSTER_NAME}
+      type: master
+  spec:
+    strategy:
+      type: Rolling
+    triggers:
+      - type: ConfigChange
+    replicas: 1
+    selector:
+      name: ${MASTER_NAME}
+    template:
+      metadata:
+        labels:
+          name: ${MASTER_NAME}
+      spec:
+        containers:
+          - name: ${MASTER_NAME}
+            image: ${SPARK_IMAGE}
+            imagePullPolicy: "Always"
+            env:
+              - name: SPARK_MASTER_PORT
+                value: "7077"
+              - name: SPARK_MASTER_WEBUI_PORT
+                value: "8080"
+            ports:
+              - containerPort: 7077
+                protocol: TCP
+              - containerPort: 8080
+                protocol: TCP
+            volumeMounts:
+              - mountPath: /mnt/data
+                name: glusterfsdata
+        volumes:
+          - name: glusterfsdata
+            persistentVolumeClaim:
+              claimName: ${MASTER_NAME}-scratch
+
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    name: ${WORKER_NAME}
+    labels:
+      cluster: ${CLUSTER_NAME}
+      type: worker
+  spec:
+    strategy:
+      type: Rolling
+    triggers:
+      - type: ConfigChange
+    replicas: ${WORKER_RELICAS}
+    selector:
+      name: ${WORKER_NAME}
+    template:
+      metadata:
+        labels:
+          name: ${WORKER_NAME}
+      spec:
+        containers:
+          - name: ${WORKER_NAME}
+            image: ${SPARK_IMAGE}
+            imagePullPolicy: "Always"
+            env:
+              - name: SPARK_MASTER_ADDRESS
+                value: spark://${MASTER_NAME}:7077
+              - name: SPARK_MASTER_UI_ADDRESS
+                value: http://${MASTER_NAME}-webui:8080
+            volumeMounts:
+              - mountPath: /mnt/data
+                name: glusterfsdata
+        volumes:
+          - name: glusterfsdata
+            persistentVolumeClaim:
+              claimName: ${MASTER_NAME}-scratch
+
+- kind: DeploymentConfig
+  apiVersion: v1
+  metadata:
+    name: ${API_NAME}
+    labels:
+      cluster: ${CLUSTER_NAME}
+      type: api
+  spec:
+    strategy:
+      type: Rolling
+    triggers:
+      - type: ConfigChange
+    replicas: 1
+    selector:
+      name: ${API_NAME}
+    template:
+      metadata:
+        labels:
+          name: ${API_NAME}
+      spec:
+        containers:
+          - name: ${API_NAME}
+            image: ${SPARK_IMAGE}
+            imagePullPolicy: "Always"
+            env:
+              - name: SPARK_MASTER_ADDRESS
+                value: spark://${MASTER_NAME}:7077
+              - name: SPARK_MASTER_UI_ADDRESS
+                value: http://${MASTER_NAME}-webui:8080
+              - name: SPARK_API
+                value: "true"
+            volumeMounts:
+              - mountPath: /mnt/data
+                name: glusterfsdata
+        volumes:
+          - name: glusterfsdata
+            persistentVolumeClaim:
+              claimName: ${MASTER_NAME}-scratch
+
+parameters:
+- name: SPARK_IMAGE
+  description: Name of the Spark master/worker image
+  value: docker.io/jeffreymanning/spark-base:latest
+- name: CLUSTER_NAME
+  description: name of cluster - applicable to spark infrastructure
+  generate: expression
+  from: "cluster-[a-z0-9]{4}"
+  required: true
+- name: MASTER_NAME
+  description: master name used as a service name and a selector
+  generate: expression
+  from: "spark-master-[a-z0-9]{4}"
+  required: true
+- name: WORKER_NAME
+  description: worker name used as a selector
+  generate: expression
+  from: "spark-worker-[a-z0-9]{4}"
+  required: true
+- name: WORKER_RELICAS
+  description: worker replica count
+  value: "3"
+  required: true
+- name: API_NAME
+  description: name of api node - spark-submit, spark-class command line operations
+  generate: expression
+  from: "api-node-[a-z0-9]{4}"
+  required: true

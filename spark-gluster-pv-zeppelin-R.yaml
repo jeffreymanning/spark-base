@@ -376,7 +376,7 @@ parameters:
   required: true
 - name: ZEPPELIN_IMAGE
   description: Name of the Zeppelin interface
-  value: docker.io/jeffreymanning/zeppelin:latest
+  value: docker.io/jeffreymanning/zeppelin-src:latest
 ###  R-studio installation
 - name: RSTUDIO_IMAGE
   description: Name of the r-studio api image
